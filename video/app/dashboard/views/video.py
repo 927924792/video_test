@@ -30,37 +30,58 @@ class ExternalVideo(View):
         from_to = request.POST.get('from_to')
         nationality =request.POST.get('nationality')
         info = request.POST.get('info')
+        video_id = request.POST.get('video_id')
+
+        if video_id:
+            reverse_path = reverse('video_update', kwargs={'video_id': video_id})
+        else:
+            reverse_path = reverse('external_video')
 
         if not all([name, image, video_type, from_to, nationality, info]):
-            return redirect('{}?error={}'.format(reverse('external_video'), '缺少必要信息'))
+            return redirect('{}?error={}'.format(reverse_path, '缺少必要信息'))
 
         result = check_and_get_video_type(
             VideoType, video_type, '非法的视频类型'
         )
         if result.get('code') != 0:
-            return redirect('{}?error={}'.format(reverse('external_video'), result['msg']))
+            return redirect('{}?error={}'.format(reverse_path, result['msg']))
 
         result = check_and_get_video_type(
             FromType, from_to, '非法的来源'
         )
         if result.get('code') != 0:
-            return redirect('{}?error={}'.format(reverse('external_video'), result['msg']))
+            return redirect('{}?error={}'.format(reverse_path, result['msg']))
 
         result = check_and_get_video_type(
             NationalityType, nationality, '非法的国籍'
         )
         if result.get('code') != 0:
-            return redirect('{}?error={}'.format(reverse('external_video'), result['msg']))
+            return redirect('{}?error={}'.format(reverse_path, result['msg']))
 
-        Video.objects.create(
-            name=name,
-            iamge=image,
-            video_type=video_type,
-            from_to=from_to,
-            info=info,
-            nationality=nationality,
-        )
-
+        if not video_id:
+            try:
+                Video.objects.create(
+                    name=name,
+                    iamge=image,
+                    video_type=video_type,
+                    from_to=from_to,
+                    info=info,
+                    nationality=nationality,
+                )
+            except:
+                return redirect('{}?error={}'.format(reverse_path, '创建失败'))
+        else:
+            try:
+                video = Video.objects.get(pk=video_id)
+                video.name=name
+                video.iamge=image
+                video.nationality=nationality
+                video.from_to=from_to
+                video.info=info
+                video.video_type=video_type
+                video.save()
+            except:
+                return redirect('{}?error={}'.format(reverse_path, '修改失败'))
         return redirect(reverse('external_video'))
 
 class VideoSubView(View):
@@ -79,11 +100,28 @@ class VideoSubView(View):
 
     def post(self, request, video_id):
         url = request.POST.get('url')
+        number = request.POST.get('number')
+        videosub_id = request.POST.get('videosub_id')
+
+        url_format = reverse('video_sub', kwargs={'video_id': video_id})
+
+        if not all([url, number]):
+            return redirect('{}?error={}'.format(url_format, '缺少必要字段'))
 
         video = Video.objects.get(pk=video_id)
-        length = video.video_sub.count()
-        VideoSub.objects.create(video=video, url=url ,number=length + 1)
-
+        if not videosub_id:
+            try:
+                VideoSub.objects.create(video=video, url=url ,number=number)
+            except:
+                return redirect('{}?error={}'.format(url_format, '创建失败'))
+        else:
+            video_sub = VideoSub.objects.get(pk=videosub_id)
+            try:
+                video_sub.url = url
+                video_sub.number = number
+                video_sub.save()
+            except:
+                return redirect('{}?error={}'.format(url_format, '修改失败'))
         return redirect(reverse('video_sub', kwargs={'video_id':video_id}))
 
 class VideoStarView(View):
@@ -123,3 +161,32 @@ class StarDelete(View):
         VideoStar.objects.filter(id=star_id).delete()
 
         return redirect(reverse('video_sub', kwargs={'video_id': video_id}))
+
+class SubDelete(View):
+
+    def get(self,request, videosub_id, video_id):
+
+        VideoSub.objects.filter(id=videosub_id).delete()
+
+        return redirect(reverse('video_sub', kwargs={'video_id': video_id}))
+
+class VideoUpdate(View):
+    TEMPLATE = 'dashboard/video/video_update.html'
+
+    @dashboard_auth
+    def get(self, request, video_id):
+        data = {}
+        video = Video.objects.get(pk=video_id)
+
+        data['video'] = video
+        return render_to_response(request, self.TEMPLATE, data=data)
+
+class VideoUpdateStatus(View):
+
+    def get(self, request, video_id):
+
+        video = Video.objects.get(pk=video_id)
+        video.status = not video.status
+        video.save()
+
+        return redirect(reverse('external_video'))
